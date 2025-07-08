@@ -1,0 +1,35 @@
+# Uber Search Platform
+
+- Uber Search platform https://www.uber.com/en-CA/blog/evolution-of-ubers-search-platform/?uclick_id=6112e9d5-c21b-4bc8-8e08-4871b77708bb
+    - Searcn is an important part of uber – searching for uber drivers, restaurants, delivery drivers, destination search, personalised predictions etc all need to be context aware, real time, and reliable.
+    - They initially used Elasticsearch and operated as site reliability engineers instead of devs
+        - an open source distributed search and analytics engine used for
+            - Full text search
+                - Technique used to find documents that contain all or part of a given query string by examining the entire text of each document
+            - Log and event data analysis
+            - Real time monitoring
+        - Underlying engine is apache lucene core that has near real time search (NRT) (industry standard for search engines)
+        - Core concepts
+            - Index – like sql , a collection of documents with similar characteristics
+            - Document – a json object that contains your data
+            - Shard – a piece of an index that allows elasticsearch to scale horizontally
+            - Cluster – group of elasticsearch nodes working together
+            - Node - a single elasticsearch sever
+    - Elasticsearch wasnt fast enough – so they built an in house engine called Sia
+    - Sia is similar to Linkedin’s Galene search stack (BASE SNAPSHOT LIVE ARCHITECTURE)
+        - New data goes in “Live index” layer which lives in RAM. (*whose RAM?)*
+        - RAM has fastest search
+        - Every 30 mins the system flushes the live index which means it writes the data to the disk and frees up RAM – kind of taking a snapshot of the live index every 30 mins
+        - Since live index snapshots pile up, every week or so the system goes back and reprocesses everything to create a cleaner version of the data to reduce clutter and improve performance
+    - Sia introduced innovations over Elasticsearch
+        - gRPC / Protobuf which enables more compact serialisation of data and faster processing on both client and server sides
+        - Apache Kafka – pull based ingestion model which decouples producers from consumers allowing Sia to ingest dataat its own pace without backpressuring upstream systems
+        - Elasticsearch doesnt support active-active replication (multiple copes of the system is running in different regions simultaneously processing data). So, Kafka was used to cross replicate data between regions so that each region has access to the same data. Basically Sia builds + maintains a global view of the data even though its running in multiple places
+    - Sia was hard to maintain because of the complex BSL arch, and the compatibility issues with Apache Lucene. Additionally, it was difficult to incorporate modern AI ML industry standards into Sia. Uber decided to go to the open source community
+    - From the open source options – Uber chose OpenSearch https://github.com/opensearch-project/OpenSearch/issues/17957?uclick_id=359f3536-9ecc-42e7-9546-cbcebe23439d
+    - Limitations
+        - Still need a platform that offers an efficient query solution for parent child relationships in data, in real time. Like, in uber eats, when a user searches for a dish, the result should return dishes (child) in restaurants (parent) within the geography of the user. This needs to be done while data is continuously being added or removed from the system
+        - Apache Lucene only offers
+            - Index-Join (BockJoin) where children are stored followed by their parents in contiguous blocks. Updating the data is painful
+            - Query time join (parent and child documents are indexed independently with children referencing the parent id. Parent is retrieved first and then the child – results in overfectning
+    - Solution: split the work into two parts – ingest data, organise it on a separate server. Then serve it in searches when data is clean and ready
